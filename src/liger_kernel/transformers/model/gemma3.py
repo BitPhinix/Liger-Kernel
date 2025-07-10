@@ -152,6 +152,7 @@ def multimodal_forward(
     return_dict: Optional[bool] = None,
     logits_to_keep: Union[int, torch.Tensor] = 0,
     skip_logits: Optional[bool] = None,
+    num_items_in_batch: Optional[torch.Tensor] = None,
     **lm_kwargs,
 ) -> Union[tuple, Gemma3CausalLMOutputWithPast]:
     r"""
@@ -254,8 +255,13 @@ def multimodal_forward(
         shift_hidden_states = shift_hidden_states.view(-1, self.config.text_config.hidden_size)
         shift_labels = shift_labels.view(-1).to(hidden_device)
 
-        lce = LigerFusedLinearCrossEntropyLoss()
-        loss = lce(self.lm_head.weight, shift_hidden_states, shift_labels)
+        if num_items_in_batch is not None:
+            lce = LigerFusedLinearCrossEntropyLoss(reduction="sum")
+            loss = lce(self.lm_head.weight, shift_hidden_states, shift_labels)
+            loss = loss / num_items_in_batch.to(loss.device)
+        else:
+            lce = LigerFusedLinearCrossEntropyLoss()
+            loss = lce(self.lm_head.weight, shift_hidden_states, shift_labels)
     else:
         logits = self.lm_head(kept_hidden_states)
         if labels is not None:
